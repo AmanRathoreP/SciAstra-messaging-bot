@@ -1,0 +1,26 @@
+{
+    "channels": [
+        {
+            "id": "-1002532167212",
+            "name": "SciAstra bot test",
+            "subject": "test",
+            "timings": [
+                {
+                    "time": "10 AM - 1 PM",
+                    "name": "Het",
+                    "user_id": "@iamhet7"
+                },
+                {
+                    "time": "5 PM - 7 PM",
+                    "name": "Aman",
+                    "user_id": "@aman0864"
+                },
+                {
+                    "time": "7 - 11 PM",
+                    "name": "Tamoghna",
+                    "user_id": "@Tamoghna"
+                }
+            ]
+        }
+    ]
+}
