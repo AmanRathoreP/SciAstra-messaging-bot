@@ -1,5 +1,7 @@
 import logging
 from url_checker import contains_prohibited_url
+from glob import glob as glob_glob
+from re import split as re_split
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
@@ -10,6 +12,16 @@ except ImportError:
     print("config.py not found. Please create it with your Telegram bot token.")
     exit(1)
 
+def load_allowed_urls():
+    all_urls = []
+    for file_path in glob_glob("*_allowed_urls.txt"):
+        with open(file_path, 'r') as file:
+            urls = re_split(r'\n+', file.read().strip())
+            all_urls.extend(urls)
+    return all_urls
+
+ALLOWED_URLS = load_allowed_urls()
+
 # Configure logging to log error messages to a file
 logging.basicConfig(
     filename='logs.log',
@@ -17,9 +29,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text('Hello! Thanks for chatting with me! I am a banana!')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text: str = update.effective_message.text
@@ -31,7 +40,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if member.status not in ['member']:
         return
 
-    if contains_prohibited_url(text):
+    if contains_prohibited_url(text, exempt_patterns=ALLOWED_URLS):
         # await update.effective_message.reply_text("Please don't share external URLs in the channel!")
         logging.info(f"deleting msg from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
         await update.effective_message.delete()

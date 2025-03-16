@@ -4,8 +4,6 @@ def contains_prohibited_url(text, exempt_patterns=None):
     if exempt_patterns is None:
         exempt_patterns = []
     
-    text = text.replace(' ', '').replace('\n', '').replace('\t', '')
-
     url_pattern = re.compile(
         r'((?:(?:https?://)|(?:www\.)|(?:[a-zA-Z0-9-]+\.[a-zA-Z]{2,}))\S*)', 
         re.IGNORECASE
