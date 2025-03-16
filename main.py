@@ -12,7 +12,7 @@ except ImportError:
 
 # Configure logging to log error messages to a file
 logging.basicConfig(
-    filename='bot_errors.log',
+    filename='logs.log',
     filemode='a',  # Append to the file
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -22,13 +22,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text('Hello! Thanks for chatting with me! I am a banana!')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_type: str = update.effective_message.chat.type
     text: str = update.effective_message.text
+    chat = update.effective_chat
+    user = update.effective_message.from_user
+    
+    member = await chat.get_member(user.id)
+    logging.info(f"{user.username} whose id is {user.id} who is a {member.status} sent: {text.replace('\n', '\\n')}")
+    if member.status not in ['member']:
+        return
 
     if contains_prohibited_url(text):
         # await update.effective_message.reply_text("Please don't share external URLs in the channel!")
-        logging.info(f"msg deleted: {text}")
+        logging.info(f"deleting msg from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
         await update.effective_message.delete()
+        logging.info(f"msg deleted from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
 
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f'Update {update} caused error {context.error}')
