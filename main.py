@@ -54,10 +54,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     member = await chat.get_member(user.id)
     logging.info(f"{user.username} whose id is {user.id} who is a {member.status} in chat '{group_name}' sent: {text.replace('\n', '\\n')}")
-    if member.status not in ['member']:
-        return
 
-    if contains_prohibited_url(text, exempt_patterns=ALLOWED_URLS):
+    if contains_prohibited_url(text, exempt_patterns=ALLOWED_URLS) and member.status in ['member']:
         # await update.effective_message.reply_text("Please don't share external URLs in the channel!")
         logging.info(f"deleting msg from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
         await update.effective_message.delete()
