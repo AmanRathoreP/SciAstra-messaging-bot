@@ -8,9 +8,10 @@ from glob import glob as glob_glob
 from re import split as re_split
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import commands as cmd
 
 try:
-    from config import TOKEN
+    from config import TOKEN, PRIVILEGED_USERS
 except ImportError:
     logging.error("config.py not found. Please create it with your Telegram bot token.")
     print("config.py not found. Please create it with your Telegram bot token.")
@@ -60,6 +61,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info(f"deleting msg from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
         await update.effective_message.delete()
         logging.info(f"msg deleted from {user.username} whose id is {user.id} who is a {member.status} whose msg was: {text.replace('\n', '\\n')}")
+        return
+    
+    if member.status not in ['member'] and text.startswith('/'):
+        await update.effective_message.reply_text(cmd.handle_commands(text, str(chat_id)))
         return
 
     if "#doubt" in text:
