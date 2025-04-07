@@ -1,6 +1,7 @@
 import datetime
 import re
 import logging
+import os
 
 def parse_time_string(time_str: str):
     """
@@ -98,6 +99,23 @@ def get_next_incharges(channel, current_time: datetime.time):
         return [channel["timings"][0]]
     return []
 
+def get_latest_file(directory_path="slots_info"):
+    try:
+        files = [f.replace(".json",'') for f in os.listdir(directory_path)
+                if os.path.isfile(os.path.join(directory_path, f))]
+        
+        if not files:
+            return None
+        
+        latest_file = max(files)
+        
+        return os.path.join("slots_info",latest_file+".json")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+
 # Test time parsing
 if __name__=="__main__":
     # --- Example Usage ---
@@ -115,3 +133,6 @@ if __name__=="__main__":
         print(f"Example: '{example}'")
         print(f"  Parsed Start Time: {start}")
         print(f"  Parsed End Time:   {end}\n")
+        
+    
+    print(get_latest_file())

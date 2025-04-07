@@ -29,7 +29,7 @@ ALLOWED_URLS = load_allowed_urls()
 
 def load_channels():
     try:
-        with open("channels_id_with_slots_info.json", "r") as f:
+        with open(h_func.get_latest_file(), "r") as f:
             return json.load(f)
     except Exception as e:
         logging.error(f"Error loading channels.json: {e}")

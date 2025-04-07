@@ -1,9 +1,10 @@
 import json
 import logging
+import helpers
 
 def load_channels_data():
     try:
-        with open("channels_id_with_slots_info.json", "r") as f:
+        with open(helpers.get_latest_file(), "r") as f:
             data = json.load(f)
             if "channels" not in data:
                 data["channels"] = []
@@ -12,7 +13,7 @@ def load_channels_data():
     return data
 
 def save_channels_data(data):
-    with open("channels_id_with_slots_info.json", "w") as f:
+    with open(helpers.get_latest_file(), "w") as f:
         json.dump(data, f, indent=4)
 
 # Existing command: /updateChannels
