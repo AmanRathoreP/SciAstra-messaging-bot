@@ -115,6 +115,77 @@ def get_latest_file(directory_path="slots_info"):
         print(f"Error: {e}")
         return None
 
+def format_time(t: datetime.time) -> str:
+    """
+    Formats a datetime.time object into a 12-hour time string with minutes.
+    For example, if t represents 10:00 AM it returns "10:00 AM", and if t represents 13:00 it returns "1:00 PM".
+    """
+    # Convert 24-hr to 12-hr format: modulo 12, and use 12 in case hour is 0.
+    hour = t.hour % 12
+    if hour == 0:
+        hour = 12
+    return f"{hour}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
+
+def convert_group_timings_from_json_to_list(group: dict) -> list:
+    """
+    Converts each timing entry in the group's 'timings' list into the format:
+      [start_time_str, end_time_str, user_id_without_@, name]
+    
+    For example, given a timing like:
+        {
+            "time": "10 AM - 1 PM",
+            "name": "Het",
+            "user_id": "@iamhet7"
+        }
+    The resulting list will be:
+        ['10:00 AM', '1:00 PM', 'iamhet7', 'Het']
+    """
+    results = []
+    timings = group.get("timings", [])
+    for slot in timings:
+        time_range_str = slot.get("time", "")
+        start, end = parse_time_range(time_range_str)
+        if not start or not end:
+            logging.warning(f"Could not parse time range: {time_range_str}")
+            continue
+        start_formatted = format_time(start)
+        end_formatted = format_time(end)
+        # Remove the leading '@' from the user_id, if present.
+        user_id = slot.get("user_id", "").lstrip("@")
+        name = slot.get("name", "")
+        results.append([start_formatted, end_formatted, user_id, name])
+    return results
+
+# Example usage of convert_group_timings_from_json_to_list:
+if __name__ == "__main__":
+    import json
+    group_json = '''
+    {
+        "id": "-1002532167212",
+        "name": "SciAstra bot test",
+        "subject": "test",
+        "timings": [
+            {
+                "time": "10 AM - 1 PM",
+                "name": "Het",
+                "user_id": "@iamhet7"
+            },
+            {
+                "time": "5 PM - 7 PM",
+                "name": "Aman",
+                "user_id": "@aman0864"
+            },
+            {
+                "time": "7 - 11 PM",
+                "name": "Tamoghna",
+                "user_id": "@Tamoghna"
+            }
+        ]
+    }
+    '''
+    group = json.loads(group_json)
+    print(convert_group_timings_from_json_to_list(group))
+
 
 # Test time parsing
 if __name__=="__main__":

@@ -211,3 +211,6 @@ pyrightconfig.json
 
 # has api keys etc.
 config.py 
+
+#our api key for google sheets
+api_key.json

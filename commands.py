@@ -1,6 +1,9 @@
 import json
 import logging
 import helpers
+import updater
+import gspread
+from google.oauth2.service_account import Credentials
 
 def load_channels_data():
     try:
@@ -216,9 +219,36 @@ def handle_add_group_to_list(args: list, chat_id) -> str:
         data["channels"].append(new_group)
     try:
         save_channels_data(data)
-        return f"Group for chat ID {chat_id} updated/added with subject '{subject}'."
+        return (f"Group for chat ID {chat_id} updated/added with subject '{subject}'.\n"
+                "Use /recreateSheets to update the Google Sheets accordingly.")
     except Exception as e:
         return f"Failed to update group: {str(e)}"
+
+# This command reads the groups data and updates (recreates) the Google Sheet accordingly.
+def handle_recreate_sheets() -> str:
+    data = load_channels_data()
+    if not data["channels"]:
+        return "No groups available to recreate sheets."
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_file("api_key.json", scopes=scopes)
+    client = gspread.authorize(creds)
+
+    from config import google_sheet_id as sheet_id
+    workbook = client.open_by_key(sheet_id)
+    # We use a counter per subject to calculate the starting column.
+    subject_counter = {}
+    for group in data["channels"]:
+        subject = group.get("subject", "Unknown")
+        if subject not in subject_counter:
+            subject_counter[subject] = 0
+        start_col = updater.num_to_col((subject_counter[subject] * 5) + 1)
+        # Prepare channel info without nested double-quote issues.
+        channel_info = [[group.get("name"), group.get("id")]]
+        timings_list = helpers.convert_group_timings_from_json_to_list(group)
+        updater.create_table(workbook, subject, start_row=1, start_col=start_col, channel_info=channel_info, values=timings_list)
+        subject_counter[subject] += 1
+
+    return "Google Sheets have been recreated with the current groups data."
 
 # New command: /docs COMMAND_NAME
 def handle_docs(args: list) -> str:
@@ -232,7 +262,8 @@ def handle_docs(args: list) -> str:
         "/getAllGroupsTimings": "Returns detailed info for all groups and their timings.",
         "/getGroupTimings": "Usage: /getGroupTimings GROUP_ID - Returns the timings of a specific group.",
         "/getAllSubjectTimings": "Usage: /getAllSubjectTimings SUBJECT - Returns groups for a subject with their timings.",
-        "/addGroupToList": "Usage: /addGroupToList SUBJECT GROUP_NAME - Adds/updates current group with the provided subject.",
+        "/addGroupToList": "Usage: /addGroupToList SUBJECT GROUP_NAME - Adds/updates the current group in the local data (without Google Sheet update).",
+        "/recreateSheets": "Recreates/updates the Google Sheets for all groups based on local data.",
         "/docs": "Usage: /docs COMMAND_NAME - Provides detailed documentation for a command.",
         "/help": "Shows this help message."
     }
@@ -251,9 +282,10 @@ def handle_help() -> str:
         "4. /getAllGroupsTimings - Returns detailed info for all groups and their timings.\n"
         "5. /getGroupTimings GROUP_ID - Returns the timings of a specific group.\n"
         "6. /getAllSubjectTimings SUBJECT - Returns groups for a subject with their timings.\n"
-        "7. /addGroupToList SUBJECT GROUP_NAME - Adds/updates current group with the provided subject.\n"
-        "8. /docs COMMAND_NAME - Provides detailed documentation for a command.\n"
-        "9. /help - Shows this help message."
+        "7. /addGroupToList SUBJECT GROUP_NAME - Adds/updates current group with the provided subject (local data only).\n"
+        "8. /recreateSheets - Recreates/updates the Google Sheets based on current groups.\n"
+        "9. /docs COMMAND_NAME - Provides detailed documentation for a command.\n"
+        "10. /help - Shows this help message."
     )
     return help_text
 
@@ -318,6 +350,9 @@ def handle_commands(message: str, chat_id) -> str:
                 args = args[1:]
             return handle_add_group_to_list(args, chat_id)
         
+        elif message.startswith("/recreateSheets"):
+            return handle_recreate_sheets()
+
         elif message.startswith("/docs"):
             parts = message.split("$$$")
             args = [part.strip() for part in parts if part.strip()]
