@@ -245,7 +245,7 @@ def handle_recreate_sheets() -> str:
         # Prepare channel info without nested double-quote issues.
         channel_info = [[group.get("name"), group.get("id")]]
         timings_list = helpers.convert_group_timings_from_json_to_list(group)
-        updater.create_table(workbook, subject, start_row=1, start_col=start_col, channel_info=channel_info, values=timings_list)
+        updater.create_table(workbook, subject, start_row=1, start_col=start_col, channel_info=channel_info, values=timings_list, force_clear=True)
         subject_counter[subject] += 1
 
     return "Google Sheets have been recreated with the current groups data."

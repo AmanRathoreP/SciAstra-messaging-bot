@@ -56,7 +56,7 @@ def num_to_col(n: int) -> str:
         result = chr(65 + remainder) + result
     return result
 
-def create_table(workbook, subject_name, start_row, start_col, channel_info=None, values=None):
+def create_table(workbook, subject_name, start_row, start_col, channel_info=None, values=None, force_clear=False):
     """
     Creates a table in the given Google Sheet starting at the specified row and column.
     
@@ -70,6 +70,9 @@ def create_table(workbook, subject_name, start_row, start_col, channel_info=None
         sheet = workbook.worksheet(subject_name)
     else:
         sheet = workbook.add_worksheet(subject_name, rows=25, cols=500)
+        sheet.clear()
+    
+    if force_clear:
         sheet.clear()
 
     sheet = workbook.worksheet(subject_name)
