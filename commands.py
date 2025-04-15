@@ -362,6 +362,7 @@ def handle_docs(args: list) -> str:
         "/getAllSubjectTimings": "Usage: /getAllSubjectTimings SUBJECT - Returns groups for a subject with their timings.",
         "/addGroupToList": "Usage: /addGroupToList SUBJECT GROUP_NAME - Adds/updates the current group in the local data (without Google Sheet update).",
         "/recreateSheets": "Recreates/updates the Google Sheets for all groups based on local data.",
+        "/updateDatabase": "Updates database of bot based on the data provided in the sheets.",
         "/docs": "Usage: /docs COMMAND_NAME - Provides detailed documentation for a command.",
         "/help": "Shows this help message."
     }
@@ -382,8 +383,9 @@ def handle_help() -> str:
         "6. /getAllSubjectTimings SUBJECT - Returns groups for a subject with their timings.\n"
         "7. /addGroupToList SUBJECT GROUP_NAME - Adds/updates current group with the provided subject (local data only).\n"
         "8. /recreateSheets - Recreates/updates the Google Sheets based on current groups.\n"
-        "9. /docs COMMAND_NAME - Provides detailed documentation for a command.\n"
-        "10. /help - Shows this help message."
+        "9. /updateDatabase - Updates database of bot based on the data provided in the sheets.\n"
+        "10. /docs COMMAND_NAME - Provides detailed documentation for a command.\n"
+        "11. /help - Shows this help message."
     )
     return help_text
 
@@ -450,6 +452,9 @@ def handle_commands(message: str, chat_id) -> str:
         
         elif message.startswith("/recreateSheets"):
             return handle_recreate_sheets()
+        
+        elif message.startswith("/updateDatabase"):
+            return handle_update_database()
 
         elif message.startswith("/docs"):
             parts = message.split("$$$")
@@ -466,3 +471,89 @@ def handle_commands(message: str, chat_id) -> str:
     except Exception as e:
         logging.exception("Error handling command: %s", e)
         return f"An unexpected error occurred: {str(e)}"
+
+def handle_update_database() -> str:
+    """
+    Reads all timings from all subject worksheets in the Google Sheets.
+    Only groups that exist in the local JSON are updated;
+    groups not present in JSON are ignored.
+    
+    For each group in the JSON, its subject is used to open the corresponding sheet,
+    and the group’s block is determined by its ordering (using the same (index*5)+1 formula).
+    The timings table is read from the group's block (data rows starting from row 4)
+    and converted into a list of timing dictionaries.
+    Finally, the JSON is updated with the new timings and the updated data is returned.
+    """
+    data = load_channels_data()
+    
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file("api_key.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        from config import google_sheet_id as sheet_id
+        workbook = client.open_by_key(sheet_id)
+    except Exception as e:
+        return f"Failed to access Google Sheets: {str(e)}"
+    
+    updated_count = 0
+    for group in data["channels"]:
+        subject = group.get("subject", "Unknown")
+        if subject == "Unknown":
+            continue  # Skip if no proper subject.
+        try:
+            sheet = workbook.worksheet(subject)
+        except Exception:
+            continue
+        
+        same_subject_groups = [g for g in data["channels"] if g.get("subject", "").lower() == subject.lower()]
+        try:
+            index_within_subject = same_subject_groups.index(group)
+        except Exception:
+            continue
+        
+        start_col = updater.num_to_col((index_within_subject * 5) + 1)
+        start_data_row = 4  
+        start_col_idx = updater.col_to_num(start_col)
+        end_col = updater.num_to_col(start_col_idx + 3)
+        
+        data_range = f"{start_col}{start_data_row}:{end_col}{sheet.row_count}"
+        try:
+            values = sheet.get(data_range)
+        except Exception:
+            values = []
+        
+        new_timings = []
+        for row in values:
+            if len(row) < 4 or row[0].strip() == "":
+                continue
+            from_time = row[0].strip()
+            to_time = row[1].strip()
+            time_range_str = f"{from_time} - {to_time}"
+            mentor_id = row[2].strip()
+            if mentor_id and not mentor_id.startswith("@"):
+                mentor_id = "@" + mentor_id
+            mentor_name = row[3].strip()
+            new_timings.append({
+                "time": time_range_str,
+                "name": mentor_name,
+                "user_id": mentor_id
+            })
+        group["timings"] = new_timings
+        updated_count += 1
+    
+    try:
+        save_channels_data(data)
+    except Exception as e:
+        return f"Failed to save updated JSON: {str(e)}"
+
+    response = f"Database update complete. Timings updated for {updated_count} groups.\n\n"
+    for group in data["channels"]:
+        response += f"Group ID: {group.get('id')}, Name: {group.get('name')}, Subject: {group.get('subject')}\n"
+        if group.get("timings"):
+            for timing in group["timings"]:
+                response += f"    - {timing.get('time')}: {timing.get('name')} ({timing.get('user_id')})\n"
+        else:
+            response += "    No timings available.\n"
+        response += "\n"
+    
+    return response
