@@ -105,19 +105,60 @@ def handle_replace_group_timings(args: list) -> str:
         return f"Error parsing timings JSON: {str(e)}"
     
     data = load_channels_data()
-    found = False
+    group_to_update = None
     for group in data["channels"]:
         if str(group.get("id")) == group_id:
             group["timings"] = new_timings
-            found = True
+            group_to_update = group
             break
-    if not found:
+    if group_to_update is None:
         return f"Group with ID {group_id} not found."
     
     try:
         save_channels_data(data)
-        return f"Timings for group {group_id} replaced successfully."
+        # --- Update Google Sheets for this group ---
+        import gspread
+        from google.oauth2.service_account import Credentials
+        from gspread.utils import rowcol_to_a1
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file("api_key.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        from config import google_sheet_id as sheet_id
+        workbook = client.open_by_key(sheet_id)
+        
+        # Determine the order of this group among those with the same subject.
+        subject = group_to_update.get("subject", "Unknown")
+        same_subject_groups = [g for g in data["channels"] if g.get("subject", "Unknown").lower() == subject.lower()]
+        index_within_subject = same_subject_groups.index(group_to_update)
+        # Calculate the starting column (e.g., each group occupies 4 columns, with an extra column gap if needed)
+        start_col = updater.num_to_col((index_within_subject * 5) + 1)
+        channel_info = [[group_to_update.get("name"), group_to_update.get("id")]]
+        
+        import helpers
+        timings_list = helpers.convert_group_timings_from_json_to_list(group_to_update)
+        
+        # Create/update the table for this group.
+        updater.create_table(
+            workbook, subject, start_row=1, start_col=start_col,
+            channel_info=channel_info, values=timings_list, force_clear=True
+        )
+        
+        # --- Clear any extra rows below the new data ---
+        # Data rows begin at row 4 (start_row+3).
+        start_data_row = 1 + 3  
+        new_data_rows = len(timings_list)
+        last_data_row = start_data_row + new_data_rows - 1
+        sheet = workbook.worksheet(subject)
+        start_col_idx = updater.col_to_num(start_col)  # convert column letter to index
+        # The group table spans 4 columns (from start_col_idx to start_col_idx+3)
+        total_rows = sheet.row_count
+        if last_data_row < total_rows:
+            clear_range = f"{rowcol_to_a1(last_data_row+1, start_col_idx)}:{rowcol_to_a1(total_rows, start_col_idx+3)}"
+            sheet.batch_clear([clear_range])
+        
+        return f"Timings for group {group_id} replaced successfully and Google Sheet updated."
     except Exception as e:
+        logging.error("Failed to update Google Sheet in replaceGroupTimings: %s", e)
         return f"Failed to replace timings: {str(e)}"
 
 # New command: /copyGroupTimings TARGET_GROUP_ID SOURCE_GROUP_ID
@@ -143,8 +184,44 @@ def handle_copy_group_timings(args: list) -> str:
     target_group["timings"] = source_group.get("timings", [])
     try:
         save_channels_data(data)
-        return f"Timings copied from group {source_id} to group {target_id} successfully."
+        # --- Update Google Sheets for the target group ---
+        import gspread
+        from google.oauth2.service_account import Credentials
+        from gspread.utils import rowcol_to_a1
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file("api_key.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        from config import google_sheet_id as sheet_id
+        workbook = client.open_by_key(sheet_id)
+        
+        subject = target_group.get("subject", "Unknown")
+        same_subject_groups = [g for g in data["channels"] if g.get("subject", "Unknown").lower() == subject.lower()]
+        index_within_subject = same_subject_groups.index(target_group)
+        start_col = updater.num_to_col((index_within_subject * 5) + 1)
+        channel_info = [[target_group.get("name"), target_group.get("id")]]
+        
+        import helpers
+        timings_list = helpers.convert_group_timings_from_json_to_list(target_group)
+        
+        updater.create_table(
+            workbook, subject, start_row=1, start_col=start_col,
+            channel_info=channel_info, values=timings_list, force_clear=True
+        )
+        
+        # --- Clear any extra rows below the newly updated data ---
+        start_data_row = 1 + 3  # data rows start at row 4
+        new_data_rows = len(timings_list)
+        last_data_row = start_data_row + new_data_rows - 1
+        sheet = workbook.worksheet(subject)
+        start_col_idx = updater.col_to_num(start_col)
+        total_rows = sheet.row_count
+        if last_data_row < total_rows:
+            clear_range = f"{rowcol_to_a1(last_data_row+1, start_col_idx)}:{rowcol_to_a1(total_rows, start_col_idx+3)}"
+            sheet.batch_clear([clear_range])
+        
+        return f"Timings copied from group {source_id} to group {target_id} successfully, and Google Sheet updated."
     except Exception as e:
+        logging.error("Failed to update Google Sheet in copyGroupTimings: %s", e)
         return f"Failed to copy timings: {str(e)}"
 
 # New command: /getAllGroupsTimings
@@ -208,20 +285,41 @@ def handle_add_group_to_list(args: list, chat_id) -> str:
     name = args[1].strip()
     data = load_channels_data()
     group_found = False
+    group_updated = None
     for group in data["channels"]:
         if str(group.get("id")) == str(chat_id):
             group["subject"] = subject
             group_found = True
+            group_updated = group
             break
     if not group_found:
-        # If group not found, add a new group with a default name.
+        # If group not found, add a new group with the given name.
         new_group = {"id": chat_id, "name": name, "subject": subject, "timings": []}
         data["channels"].append(new_group)
+        group_updated = new_group
     try:
         save_channels_data(data)
+        # --- Update Google Sheets for this group ---
+        import gspread
+        from google.oauth2.service_account import Credentials
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = Credentials.from_service_account_file("api_key.json", scopes=scopes)
+        client = gspread.authorize(creds)
+        from config import google_sheet_id as sheet_id
+        workbook = client.open_by_key(sheet_id)
+        
+        subject = group_updated.get("subject", "Unknown")
+        same_subject_groups = [g for g in data["channels"] if g.get("subject", "Unknown").lower() == subject.lower()]
+        index_within_subject = same_subject_groups.index(group_updated)
+        start_col = updater.num_to_col((index_within_subject * 5) + 1)
+        channel_info = [[group_updated.get("name"), group_updated.get("id")]]
+        timings_list = helpers.convert_group_timings_from_json_to_list(group_updated)
+        updater.create_table(workbook, subject, start_row=1, start_col=start_col, channel_info=channel_info, values=timings_list)
+        
         return (f"Group for chat ID {chat_id} updated/added with subject '{subject}'.\n"
-                "Use /recreateSheets to update the Google Sheets accordingly.")
+                "Google Sheet updated for this group.")
     except Exception as e:
+        logging.error("Failed to update google sheet in addGroupToList: %s", e)
         return f"Failed to update group: {str(e)}"
 
 # This command reads the groups data and updates (recreates) the Google Sheet accordingly.

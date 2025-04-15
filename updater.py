@@ -58,33 +58,40 @@ def num_to_col(n: int) -> str:
 
 def create_table(workbook, subject_name, start_row, start_col, channel_info=None, values=None, force_clear=False):
     """
-    Creates a table in the given Google Sheet starting at the specified row and column.
+    Creates or updates a table in the given Google Sheet starting at the specified row and column.
     
     Parameters:
-        channel_info (list of list): Data for the first row (e.g., channel info). Example:
-        [["this is a testing channel", "-545454545"]]
-        values (list of list): The table data rows to be placed starting two rows after start_row.
+        workbook (gspread.Client): The authorized Google Sheets workbook.
+        subject_name (str): Worksheet name (typically the subject name).
+        start_row (int): The row number where the table starts.
+        start_col (str): The starting column letter (e.g., 'A', 'I').
+        channel_info (list of list): Data for the top header (for example, [[channel name, channel ID]]).
+        values (list of list): The table data rows to be placed starting three rows below start_row.
+        force_clear (bool): If True, after updating data, any leftover cells below the new data (in this group's column block) are cleared.
     """
-    
+    # Get or create the worksheet.
     if subject_name in map(lambda x: x.title, workbook.worksheets()):
         sheet = workbook.worksheet(subject_name)
     else:
         sheet = workbook.add_worksheet(subject_name, rows=25, cols=500)
         sheet.clear()
     
-    if force_clear:
-        sheet.clear()
-
     sheet = workbook.worksheet(subject_name)
 
     start_col_idx = col_to_num(start_col)
-    
-    sheet.merge_cells(f"{start_col}{start_row}:{num_to_col(col_to_num(start_col)+1)}{start_row+1}", "MERGE_ALL")
-    sheet.merge_cells(f"{num_to_col(col_to_num(start_col)+2)}{start_row}:{num_to_col(col_to_num(start_col)+3)}{start_row+1}", "MERGE_ALL")
+
+    sheet.merge_cells(f"{start_col}{start_row}:{num_to_col(col_to_num(start_col)+1)}{start_row+1}")
+    sheet.merge_cells(f"{num_to_col(col_to_num(start_col)+2)}{start_row}:{num_to_col(col_to_num(start_col)+3)}{start_row+1}")
     sheet.update(f"{start_col}{start_row}:{num_to_col(col_to_num(start_col)+1)}{start_row+1}", [[channel_info[0][0]]])
     sheet.update(f"{num_to_col(col_to_num(start_col)+2)}{start_row}:{num_to_col(col_to_num(start_col)+3)}{start_row+1}", [[channel_info[0][1]]])
-    sheet.format(f"{start_col}{start_row}:{num_to_col(col_to_num(start_col)+3)}{start_row+1}", {"textFormat": {"bold": True, "fontSize": 13},  "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"})
+    sheet.format(
+        f"{start_col}{start_row}:{num_to_col(col_to_num(start_col)+3)}{start_row+1}",
+        {"textFormat": {"bold": True, "fontSize": 13},
+            "horizontalAlignment": "CENTER",
+            "verticalAlignment": "MIDDLE"}
+    )
     
+    # Write the second header row.
     num_cols = 4
     header_row = start_row + 2
     start_cell = rowcol_to_a1(header_row, start_col_idx)
@@ -93,14 +100,23 @@ def create_table(workbook, subject_name, start_row, start_col, channel_info=None
     sheet.update(cell_range, [["From", "To", "mentor id", "mentor name"]])
     sheet.format(cell_range, {"textFormat": {"bold": True}})
     
+    # Insert the table data.
     if values:
         num_cols = len(values[0])
         data_start_row = start_row + 3
         data_end_row = data_start_row + len(values) - 1
         start_cell = rowcol_to_a1(data_start_row, start_col_idx)
         end_cell = rowcol_to_a1(data_end_row, start_col_idx + num_cols - 1)
-        cell_range = f"{start_cell}:{end_cell}"
-        sheet.update(cell_range, values)
+        data_range = f"{start_cell}:{end_cell}"
+        sheet.update(data_range, values)
+        
+        # Clear all cells below the newly updated data in this group's block.
+        if force_clear:
+            total_rows = sheet.row_count
+            if data_end_row < total_rows:
+                clear_range = f"{rowcol_to_a1(data_end_row+1, start_col_idx)}:" \
+                                f"{rowcol_to_a1(total_rows, start_col_idx+num_cols-1)}"
+                sheet.batch_clear([clear_range])
 
 if __name__ == "__main__":
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
