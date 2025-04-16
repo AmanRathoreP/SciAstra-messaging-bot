@@ -64,7 +64,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if member.status not in ['member'] and text.startswith('/'):
-        await update.effective_message.reply_text(cmd.handle_commands(text, str(chat_id)))
+        msg = cmd.handle_commands(text, str(chat_id))
+        if "get" not in msg:
+            global CHANNELS_DATA
+            CHANNELS_DATA = load_channels()
+        await update.effective_message.reply_text(msg)
         return
 
     if "#doubt" in text:
