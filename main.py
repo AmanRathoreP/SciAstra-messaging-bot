@@ -72,7 +72,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if "#doubt" in text:
-        current_time = datetime.datetime.now().time()
+        current_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).time()
         channel = h_func.get_channel_by_chat_id(chat_id, CHANNELS_DATA)
         if channel:
             active_slots = h_func.get_active_incharges(channel, current_time)
