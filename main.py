@@ -47,6 +47,11 @@ logging.basicConfig(
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text: str = update.effective_message.text
+    
+    if text is None:
+        #* message might be an image
+        text: str = update.effective_message.caption
+    
     chat = update.effective_chat
     user = update.effective_message.from_user
 
@@ -118,7 +123,7 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == '__main__':
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT | filters.CAPTION, handle_message))
     app.add_error_handler(error)
 
     logging.info("Starting bot...")
