@@ -9,6 +9,9 @@ from re import split as re_split
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 import commands as cmd
+import os
+import csv
+import hashlib
 
 try:
     from config import TOKEN, PRIVILEGED_USERS
@@ -45,6 +48,56 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+def generate_query_id(user_id, date_str):
+    """Generate a unique query ID based on date, time, and user ID"""
+    # Create queries directory if it doesn't exist
+    queries_dir = "queries"
+    os.makedirs(queries_dir, exist_ok=True)
+    
+    # Get count of queries for today
+    csv_path = os.path.join(queries_dir, f"{date_str}.csv")
+    query_count = 0
+    if os.path.exists(csv_path):
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            query_count = sum(1 for _ in f) - 1  # Subtract header row
+    
+    # Generate hash from current timestamp, user ID and query count
+    timestamp = datetime.datetime.now().timestamp()
+    hash_input = f"{timestamp}-{user_id}-{query_count}"
+    hash_object = hashlib.md5(hash_input.encode())
+    hash_hex = hash_object.hexdigest()[:8]  # Take first 8 chars of hash
+    
+    # Final ID format: YYYYMMDD-COUNT-HASH
+    return f"{date_str}-{query_count+1:03d}-{hash_hex}"
+
+def log_query_to_csv(query_id, user_id, username, date_str, time_str, 
+                    chat_id, chat_name, message_text):
+    """Log query details to a daily CSV file in the queries folder"""
+    # Create queries directory if it doesn't exist
+    queries_dir = "queries"
+    os.makedirs(queries_dir, exist_ok=True)
+    
+    csv_path = os.path.join(queries_dir, f"{date_str}.csv")
+    file_exists = os.path.exists(csv_path)
+    
+    with open(csv_path, 'a', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['query_id', 'date', 'time', 'user_id', 'username', 
+                    'chat_id', 'chat_name', 'message']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        if not file_exists:
+            writer.writeheader()
+        
+        writer.writerow({
+            'query_id': query_id,
+            'date': date_str,
+            'time': time_str,
+            'user_id': user_id,
+            'username': username,
+            'chat_id': chat_id,
+            'chat_name': chat_name,
+            'message': message_text
+        })
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text: str = update.effective_message.text
     
@@ -116,6 +169,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_text = "Channel configuration not found."
         await update.effective_message.reply_text(reply_text)
         logging.info(f"Replied with timings for chat id {chat_id}: {reply_text}")
+    
+    # Handle queries with hashtags #querry, #query, or #qur
+    if any(tag in text.lower() for tag in ["#querry", "#query", "#qur"]):
+        # Get current date and time
+        now = datetime.datetime.now()
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H:%M:%S')
+        
+        # Generate unique query ID
+        query_id = generate_query_id(user.id, date_str)
+        
+        # Log to CSV
+        log_query_to_csv(
+            query_id, 
+            user.id,
+            user.username if user.username else "Unknown", 
+            date_str, 
+            time_str, 
+            chat_id, 
+            group_name, 
+            text
+        )
+        
+        # Reply to the message
+        reply_text = f"Query #{query_id} raised. Our support team will reach you out soon."
+        await update.effective_message.reply_text(reply_text)
+        logging.info(f"Logged query #{query_id} from {user.username} in {group_name}: {text.replace('\n', '\\n')}")
 
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f'Update {update} caused error {context.error}')

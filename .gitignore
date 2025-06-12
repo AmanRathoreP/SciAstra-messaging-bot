@@ -214,3 +214,4 @@ config.py
 
 #our api key for google sheets
 api_key.json
+queries/
